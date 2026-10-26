@@ -1,0 +1,36 @@
+digraph UML {
+ graph [rankdir=TB, bgcolor="white", nodesep=0.22, ranksep=0.3, pad=0.12];
+ node [shape=record, style=filled, fillcolor="#edf3fa", fontname="Open Sans", fontsize=10, margin="0.07,0.05"];
+ edge [fontname="Open Sans", fontsize=8, color="#44566e", arrowsize=0.65];
+ Personne [label="{Personne (abstraite)|id, nom, prenom, pseudo\ngenre, telephone}"];
+ Joueur [label="{Joueur|statut ; victoires depuis arrivee}"]; Coach [label="{Coach|victoires carriere}"];
+ Arbitre [label="{Arbitre : Qualifie|qualifications ; matchs arbitres}"];
+ Equipe [label="{Equipe : Classe|nom, points ; reservation|ajouter / retirer / nommer}"];
+ Jeu [label="{Jeu (abstrait)|nom, manches|selectionner ; joueursParEquipe}"];
+ JeuSolo [label="{JeuSolo|1 joueur}"]; JeuCollectif [label="{JeuCollectif|3 a 5 joueurs}"];
+ Tournoi [label="{Tournoi : Comparable|nom, date, budget, arenes, etat|inscrire ; consulter ; attendreRapport}"];
+ Match [label="{Match|jeu ; compositions ; etat ; vainqueur}"];
+ Arena [label="{Arena : AutoCloseable|registres ; PriorityQueue ; pool de 3|planifier ; lancerSuivant ; close}"];
+ Rapport [label="{Rapport (Entity JPA)|id, nomTournoi, date, jeu\nmatchsPrevus, matchsJoues\nequipeVainqueur, reussite}"];
+ DepotRapports [label="{DepotRapports (interface)|sauvegarder ; tous ; parJeu}"];
+ DepotJpa [label="{DepotJpa|EntityManagerFactory ; H2 fichier}"];
+ Simulateur [label="{Simulateur|executer : lots logiques + Random}"];
+ Strategie [label="{StrategieVainqueur (interface)|choisir(Equipe, Equipe, Random)}"];
+ Strategies [label="{Strategies|equitable ; ponderee ; meilleure}"];
+ Observer [label="{EcouteurMatch (interface)|matchTermine(Match)}"];
+ Parametres [label="{ParametresSimulation (record)|tempsParMatch ; proba ; strategie}"];
+ Vue [label="{VueTournoi (record immuable)|etat ; points ; resultats}"];
+ {rank=same; Joueur; Coach; Arbitre;}
+ {rank=same; JeuSolo; JeuCollectif;}
+ Personne -> Joueur [dir=back,arrowtail=empty]; Personne -> Coach [dir=back,arrowtail=empty]; Personne -> Arbitre [dir=back,arrowtail=empty];
+ Equipe -> Joueur [label="0..* / 0..1",arrowhead=none]; Equipe -> Coach [label="0..1 / 0..1",arrowhead=none];
+ Jeu -> JeuSolo [dir=back,arrowtail=empty]; Jeu -> JeuCollectif [dir=back,arrowtail=empty];
+ Arbitre -> Jeu [label="qualifie 1..*"];
+ Arena -> Tournoi [label="gere"]; Arena -> Equipe [label="registre"]; Arena -> DepotRapports;
+ Tournoi -> Equipe [label="inscrit 0..*"]; Tournoi -> Match [label="0..*",dir=both,arrowtail=diamond,arrowhead=none];
+ Tournoi -> Jeu [label="1"]; Match -> Arbitre [label="1"]; Match -> Equipe [label="2"]; Match -> Jeu [label="1"];
+ Tournoi -> Rapport [style=dashed,label="cree"]; Tournoi -> Vue [style=dashed];
+ DepotRapports -> DepotJpa [dir=back,arrowtail=empty,style=dashed]; DepotJpa -> Rapport [label="seule entite"];
+ Arena -> Simulateur [style=dashed]; Simulateur -> Parametres; Parametres -> Strategie;
+ Strategies -> Strategie [style=dashed,label="fournit"]; Simulateur -> Observer [label="notifie"];
+}

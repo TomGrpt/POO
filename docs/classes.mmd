@@ -1,0 +1,149 @@
+classDiagram
+ direction TB
+ class Personne {
+  <<abstract>>
+  -String id
+  -String nom
+  -String prenom
+  -String pseudo
+  -Genre genre
+  -String telephone
+ }
+ class Joueur {
+  -StatutJoueur statut
+  -int victoiresDepuisArrivee
+ }
+ class Coach {
+  -int victoires
+ }
+ class Arbitre {
+  -Set~Jeu~ qualifications
+  -int matchsArbitres
+  +estQualifie(Jeu) boolean
+ }
+ class Qualifie {
+  <<interface>>
+  +estQualifie(Jeu) boolean
+ }
+ class Classe {
+  <<interface>>
+  +nom() String
+  +points() int
+ }
+ class Equipe {
+  -String nom
+  -int points
+  -Object reservation
+  +ajouter(Joueur)
+  +retirer(Joueur)
+  +nommer(Coach)
+ }
+ class Jeu {
+  <<abstract>>
+  -String nom
+  -int manches
+  +joueursParEquipe() int
+  +selectionner(List) List
+ }
+ class JeuSolo
+ class JeuCollectif {
+  -int nombreJoueurs
+ }
+ class Match {
+  -EtatMatch etat
+  -List~Joueur~ compositionPremiere
+  -List~Joueur~ compositionSeconde
+  -Equipe vainqueur
+ }
+ class Tournoi {
+  -String nom
+  -LocalDateTime date
+  -BigDecimal budget
+  -int arenes
+  -EtatTournoi etat
+  -CompletableFuture~Rapport~ rapport
+  +inscrire(Equipe)
+  +consulter() VueTournoi
+  +attendreRapport(Duration) Rapport
+ }
+ class Arena {
+  -PriorityQueue~Tournoi~ planifies
+  -ExecutorService executeur
+  +lancerSuivant(ParametresSimulation,long) Tournoi
+  +close()
+ }
+ class StrategieVainqueur {
+  <<interface>>
+  +choisir(Equipe,Equipe,Random) Equipe
+ }
+ class Strategies {
+  +equitable() StrategieVainqueur
+  +ponderee() StrategieVainqueur
+  +meilleure() StrategieVainqueur
+ }
+ class EcouteurMatch {
+  <<interface>>
+  +matchTermine(Match)
+ }
+ class Simulateur {
+  +executer(Tournoi,ParametresSimulation,Random,List,Consumer)$
+ }
+ class ParametresSimulation {
+  <<record>>
+  +Duration tempsParMatch
+  +double probabiliteIncident
+ }
+ class VueTournoi {
+  <<record immuable>>
+  +EtatTournoi etat
+  +Map points
+  +List matchs
+ }
+ class Rapport {
+  <<Entity JPA>>
+  -Long id
+  -String nomTournoi
+  -LocalDateTime date
+  -String jeu
+  -int matchsPrevus
+  -int matchsJoues
+  -String equipeVainqueur
+  -boolean reussite
+ }
+ class DepotRapports {
+  <<interface>>
+  +sauvegarder(Rapport)
+  +tous() List
+  +parJeu(String) List
+ }
+ class DepotJpa
+ Personne <|-- Joueur
+ Personne <|-- Coach
+ Personne <|-- Arbitre
+ Qualifie <|.. Arbitre
+ Classe <|.. Equipe
+ Equipe "0..1" o-- "0..*" Joueur
+ Equipe "0..1" o-- "0..1" Coach
+ Arbitre --> "1..*" Jeu : qualifications
+ Jeu <|-- JeuSolo
+ Jeu <|-- JeuCollectif
+ Match --> "2" Equipe
+ Match --> "1" Arbitre
+ Match --> "1" Jeu
+ Tournoi --> "1" Jeu
+ Tournoi o-- "0..*" Equipe : inscriptions
+ Tournoi *-- "0..*" Match
+ Tournoi ..> VueTournoi
+ Tournoi ..> Rapport : produit
+ Arena o-- Tournoi
+ Arena o-- Equipe
+ Arena o-- Personne
+ Arena o-- Jeu
+ Arena --> DepotRapports
+ Arena ..> Simulateur
+ Arena --> EcouteurMatch : notifications
+ Simulateur --> ParametresSimulation
+ ParametresSimulation --> StrategieVainqueur
+ Strategies ..> StrategieVainqueur : fournit
+ DepotRapports <|.. DepotJpa
+ DepotJpa --> Rapport : persiste uniquement
