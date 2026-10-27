@@ -18,8 +18,8 @@ digraph UML {
  Strategie [label="{StrategieVainqueur (interface)|choisir(Equipe, Equipe, Random)}"];
  Strategies [label="{Strategies|equitable ; ponderee ; meilleure}"];
  Observer [label="{EcouteurMatch (interface)|matchTermine(Match)}"];
- Parametres [label="{ParametresSimulation (record)|tempsParMatch ; proba ; strategie}"];
- Vue [label="{VueTournoi (record immuable)|etat ; points ; resultats}"];
+ Parametres [label="{ParametresSimulation|tempsParMatch ; proba ; strategie}"];
+ Vue [label="{VueTournoi (immuable)|etat ; points ; resultats}"];
  {rank=same; Joueur; Coach; Arbitre;}
  {rank=same; JeuSolo; JeuCollectif;}
  Personne -> Joueur [dir=back,arrowtail=empty]; Personne -> Coach [dir=back,arrowtail=empty]; Personne -> Arbitre [dir=back,arrowtail=empty];
@@ -33,4 +33,14 @@ digraph UML {
  DepotRapports -> DepotJpa [dir=back,arrowtail=empty,style=dashed]; DepotJpa -> Rapport [label="seule entite"];
  Arena -> Simulateur [style=dashed]; Simulateur -> Parametres; Parametres -> Strategie;
  Strategies -> Strategie [style=dashed,label="fournit"]; Simulateur -> Observer [label="notifie"];
+ StrategieEquitable [label="StrategieEquitable"];
+ StrategiePonderee [label="StrategiePonderee"];
+ StrategieMeilleure [label="StrategieMeilleure"];
+ CompteurMatchs [label="{CompteurMatchs|nombre ; matchTermine}"];
+ ResultatMatch [label="{ResultatMatch (immuable)|equipes ; etat ; vainqueur}"];
+ Strategie -> StrategieEquitable [dir=back,arrowtail=empty,style=dashed];
+ Strategie -> StrategiePonderee [dir=back,arrowtail=empty,style=dashed];
+ Strategie -> StrategieMeilleure [dir=back,arrowtail=empty,style=dashed];
+ Observer -> CompteurMatchs [dir=back,arrowtail=empty,style=dashed];
+ Vue -> ResultatMatch [dir=both,arrowtail=diamond,arrowhead=none];
 }

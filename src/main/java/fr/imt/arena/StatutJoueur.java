@@ -1,3 +1,6 @@
 package fr.imt.arena;
 
-public enum StatutJoueur { AMATEUR, PROFESSIONNEL }
+public enum StatutJoueur {
+    AMATEUR,
+    PROFESSIONNEL
+}

@@ -1,45 +1,71 @@
-# Vérification exécutée — 26 octobre 2026
+# Vérification de la version simplifiée — 27 octobre 2026
 
-## Environnement et commandes
+## Ce qui a été simplifié
 
-JDK Temurin 21.0.9+10 complet et Maven 3.9.11, téléchargés via HTTPS et vérifiés par SHA-256 / SHA-512 officiels. Le Java préinstallé était incomplet (`ct.sym` absent) : le JDK autonome le remplace pour Maven, sans modifier les bibliothèques du système. Cache et configuration proxy hors checkout. Aucun contournement TLS, de checksum ou d'assertion.
+- Les streams, références de méthodes et conditions compactes du code de production sont remplacés par des boucles, des `if` et des variables explicites.
+- Les records deviennent des classes ordinaires avec un constructeur et des méthodes de lecture.
+- Les stratégies sont trois petites classes : StrategieEquitable, StrategiePonderee et StrategieMeilleure.
+- CompteurMatchs illustre Observer sans lambda ni AtomicInteger dans Main.
+- Les requêtes JPA sont écrites par étapes, avec une variable pour la requête.
+- Main sépare la création des données et l'affichage dans de courtes méthodes.
+- Les abonnements sont dans une ArrayList protégée par le verrou d'Arena puis copiée au lancement. La seule lambda de production envoie la tâche de simulation au pool.
 
-Depuis `/workspace/POO` :
+Les contrôles métier, réservations, synchronisations, attentes bornées et transactions sont conservés. Les cinq suites de tests existantes n'ont pas été modifiées : mêmes assertions, mêmes données et mêmes cas paramétrés.
+
+## Commandes exécutées
+
+JDK Temurin 21.0.9+10 complet, Maven 3.9.11. Depuis `/workspace/POO` :
 
 ```sh
 ./mvn-cloud -B clean verify
 ./mvn-cloud -B exec:java
 ```
 
-Résultat : **42 exécutions de tests, 0 échec, 0 erreur, 0 ignoré**, jar Maven produit. Répartition : DomainTest 15, TournamentTest 8, SimulationTest 11, ConcurrencyTest 6, PersistenceTest 2.
+**Compilation et construction réussies. 42 tests exécutés : aucun échec, aucune erreur, aucun test ignoré.**
 
-## Observations fonctionnelles
+| Suite | Exécutions |
+|---|---:|
+| DomainTest | 15 |
+| TournamentTest | 8 |
+| SimulationTest | 11 |
+| ConcurrencyTest | 6 |
+| PersistenceTest | 2 |
 
-La démonstration réelle termine normalement : deux tournois de 15 matchs, 14 matchs joués chacun ; vainqueurs « Equipe 1 » (Duel), « Equipe 3 » (Arena 3). Deux rapports sont automatiquement enregistrés, trente notifications Observer reçues. Deux arbitres apparaissent occupés au lancement, puis disponibles après clôture. Le classement général totalise 84 points, soit 28 victoires × 3. Dix rencontres concernent l'équipe 1 sur les deux tournois.
+Les tests couvrent notamment appartenance, transferts, promotion, qualification, points, incidents, compositions, génération des rencontres, lancement et rollback, priorité, limite de trois tournois sous concurrence, mutations refusées, vues cohérentes, délai d'attente, fermeture sur interruption, stratégies et erreurs d'observateur ou de stockage.
 
-Les tests de persistance créent de vrais fichiers H2 temporaires, ferment et rouvrent les factories ; identifiants, date, jeu, comptes, vainqueur et réussite sont relus. Un second test sauvegarde depuis trois workers et retrouve trois rapports après réouverture.
+Les deux tests JPA utilisent de vrais fichiers H2 temporaires. Ils ferment et rouvrent le dépôt pour relire les données ; l'un d'eux sauvegarde depuis trois workers. Le test de durée vérifie 15 × 100 / 3 = 500 ms, la variante à quatre arènes et une exécution temporelle réelle avec attente bornée. Aucune assertion n'a été retirée pour faire passer la réécriture.
 
-La concurrence est testée avec latches et délais bornés : huit appels de lancement, exactement trois acceptés tant que les tâches sont retenues ; double réservation refusée ; effectifs immuables pendant engagement ; deux équipes concurrentes ne peuvent accueillir le même joueur ; fermeture normale et fermeture sur interruption libèrent les ressources. Les photographies de tournoi présentent toujours un total de points égal à trois fois le nombre de matchs joués. Même graine : même liste de résultats.
+## Démonstration exécutée
 
-Le calcul de durée est vérifié sur 15×100/3=500 ms et 15×100/4=375 ms. Une simulation réelle du premier cas ne se termine pas prématurément ; le test tolère les surcoûts du système, sans imposer une borne supérieure fragile autre que l'attente maximale. Un délai de rapport trop court déclenche TimeoutException.
+La démonstration termine normalement avec les résultats attendus pour les graines 42 et 84 :
 
-Les erreurs de stratégie et de sauvegarde sont visibles via ExecutionException ; les réservations sont libérées. Les exceptions d'observateur sont collectées et n'empêchent pas les autres notifications. Une interruption annule les rencontres restantes, génère un rapport incomplet et signale l'interruption à l'appelant.
+- Coupe Duel : 14 matchs joués sur 15, Equipe 1 vainqueur, tournoi réussi.
+- Coupe Collective : 14 matchs joués sur 15, Equipe 3 vainqueur, tournoi réussi.
+- Classement général : 18, 15, 15, 15, 12 et 9 points, soit 84 points pour 28 victoires.
+- Deux arbitres occupés au lancement, puis deux disponibles.
+- Dix rencontres pour l'équipe 1 sur les deux tournois.
+- Trente notifications comptées par CompteurMatchs.
 
-## Interprétations et limites explicites
+Deux nouveaux rapports sont enregistrés à chaque démonstration. La base locale contenait déjà les rapports d'une exécution précédente ; leur présence après relancement est normale. Les tests restent indépendants de cette base de démonstration.
 
-- Modèle de temps agrégé avec arènes logiques, dernier lot proratisé ; pas de planning sportif excluant simultanément une équipe ou un arbitre. Ce choix suit la formule imposée et son exemple.
-- Disponibilité d'un arbitre = aucun engagement dans un tournoi. Les arbitres peuvent être partagés, leur exclusivité n'étant pas imposée.
-- Classement local du tournoi, classement général cumulatif ; égalités départagées par nom. Aucun vainqueur si tous les matchs sont annulés.
-- Identifiants uniques supposés par le PDF ; une seule Arena coordonne les tournois d'une saison. Les extensions utilisateur doivent terminer et coopérer avec l'interruption : Java ne peut forcer l'arrêt d'un callback arbitraire.
-- Aucun test n'est présenté comme une preuve mathématique d'absence de toute course. Pas de couverture chiffrée inventée ; les tests visent les règles critiques.
-- Aucun dépôt distant modifié, commit ou push effectué. Les sorties générées et bases de démonstration sont ignorées et exclues de l'archive. Le PDF officiel est une entrée de travail, pas un livrable réédité.
+## Documentation et livraison
 
-La préparation à l'oral est fournie ; l'assiduité et les réponses lors de l'entretien ne peuvent pas être validées par le logiciel.
+Le README décrit le code actuel avec un parcours de lecture, des exemples simples et les notions techniques expliquées au moment de leur utilisation. Les liens locaux, ancres du sommaire et références aux 33 fichiers Java de production sont contrôlés. Les diagrammes Mermaid et Graphviz sont mis à jour. Le PDF régénéré a exactement deux pages, rendues et inspectées visuellement.
 
-## Contrôle de livraison
+Les seuls appels System.out du code de production sont dans Main. Les sources ne contiennent ni streams, ni références de méthodes, ni records. Les tests conservent les lambdas adaptées à JUnit et aux expériences concurrentes.
 
-Le PDF a été généré, ses deux pages rendues et inspectées visuellement ; les polices sont intégrées. La source Mermaid et la représentation Graphviz correspondent aux classes livrées. L'inspection des sources confirme que les seuls appels System.out sont dans Main.
+Le ZIP de livraison est reconstruit avec les sources, les ressources, les tests et la documentation, sans Git, base, cache ou target. Son intégrité et la correspondance de son contenu avec les fichiers du projet sont vérifiées.
 
-L'archive a été testée (intégrité ZIP et présence des livrables), extraite dans `/tmp/arena-livraison/POO`, puis reconstruite avec `mvn -o -B clean verify` via le lanceur cloud : **42 tests exécutés, 0 échec, 0 erreur, 0 ignoré, BUILD SUCCESS**. Aucun fichier source ou ressource ne dépend du répertoire de compilation initial. Seule cette note de contrôle a été ajoutée ensuite à la documentation. L'archive finale a été régénérée et son intégrité revérifiée.
+## Interprétations et limites
 
-Le script `scripts/cloud_setup.sh` a également été exécuté avec succès après installation des outils : il est répétable, et lance verify. `install_script` et `start_skill` ont été enregistrés dans le brouillon de configuration cloud ; cela ne constitue ni une publication ni une validation dans une nouvelle tâche. Pour les conserver comme environnement publié, revoir et enregistrer les changements dans les paramètres, puis publier l'environnement. Aucun processus de service n'est requis pour cette application console.
+- Une seule Arena coordonne une saison ; le sujet suppose les identifiants de personnes uniques.
+- Les points généraux et victoires de coach sont cumulatifs. Le classement de tournoi repose sur les points locaux, puis le nom en cas d'égalité. Zéro match joué : pas de vainqueur.
+- Les arènes sont logiques et le dernier lot est proratisé pour respecter M × t / A. Aucun planning sportif exclusif par équipe ou arbitre n'est ajouté.
+- Les arbitres peuvent être partagés ; disponible signifie non engagé dans un tournoi. Seuls les matchs joués comptent comme arbitrés.
+- Les extensions doivent terminer et coopérer avec l'interruption. Java ne permet pas d'arrêter proprement de force un callback arbitraire.
+- Les tests ne sont pas une preuve mathématique d'absence de toute course. Aucun pourcentage de couverture n'est inventé.
+- Les outils cloud ont été installés via HTTPS et vérifiés par les empreintes officielles. Leurs instructions restent enregistrées dans la configuration de l'environnement ; une publication de cette configuration et une restauration dans une nouvelle tâche sont des opérations distinctes, non prouvées par les tests du projet.
+
+## Vérification du projet extrait du ZIP
+
+L'archive a été extraite dans un dossier neuf (`/tmp/arena-simple-livraison/POO`). Depuis ce dossier, `mvn -o -B clean verify`, via le lanceur Maven cloud, a recompilé les sources et exécuté les mêmes cinq suites : **42 tests, 0 échec, 0 erreur, 0 ignoré, BUILD SUCCESS**. Seule cette note documentaire a été ajoutée après ce contrôle ; les sources livrées sont identiques à celles de l'extraction testée. L'archive finale a été régénérée et son intégrité revérifiée.

@@ -1,10 +1,24 @@
 package fr.imt.arena;
 
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.PriorityQueue;
+import java.util.Queue;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
-/** Service applicatif : registre et ordonnancement. Aucun accès lent sous son moniteur. */
+/** Registre des objets et responsable du lancement des tournois. */
 public final class Arena implements AutoCloseable {
     private final Map<String, Personne> personnes = new LinkedHashMap<>();
     private final Map<String, Jeu> jeux = new HashMap<>();
@@ -12,98 +26,264 @@ public final class Arena implements AutoCloseable {
     private final Map<String, Tournoi> tournois = new HashMap<>();
     private final PriorityQueue<Tournoi> planifies = new PriorityQueue<>();
     private final Set<Tournoi> enCours = new HashSet<>();
-    private final List<EcouteurMatch> observateurs = new CopyOnWriteArrayList<>();
+    private final List<EcouteurMatch> observateurs = new ArrayList<>();
     private final Queue<RuntimeException> erreursObservateurs = new ConcurrentLinkedQueue<>();
     private final ExecutorService executeur = Executors.newFixedThreadPool(3);
     private final DepotRapports depot;
     private boolean ferme;
-    public Arena(DepotRapports depot) { this.depot = Objects.requireNonNull(depot); }
-    private void ouverte() { if (ferme) throw new IllegalStateException("Arena fermée"); }
-    public synchronized void ajouter(Personne p) {
-        ouverte(); if (personnes.putIfAbsent(p.id(), p) != null) throw new IllegalArgumentException("Id déjà enregistré");
+
+    public Arena(DepotRapports depot) {
+        this.depot = Objects.requireNonNull(depot);
     }
-    public synchronized void ajouter(Jeu j) {
-        ouverte(); if (jeux.putIfAbsent(j.nom(), j) != null) throw new IllegalArgumentException("Jeu déjà enregistré");
+
+    private void verifierOuverture() {
+        if (ferme) {
+            throw new IllegalStateException("Arena est fermée");
+        }
     }
-    public synchronized void ajouter(Equipe e) {
-        ouverte(); if (equipes.putIfAbsent(e.nom(), e) != null) throw new IllegalArgumentException("Nom déjà enregistré");
+
+    public synchronized void ajouter(Personne personne) {
+        verifierOuverture();
+        if (personnes.containsKey(personne.id())) {
+            throw new IllegalArgumentException("Cet identifiant est déjà enregistré");
+        }
+        personnes.put(personne.id(), personne);
     }
-    public synchronized void planifier(Tournoi t) {
-        ouverte();
-        if (t.etat() != EtatTournoi.PLANIFIE || tournois.putIfAbsent(t.nom(), t) != null) throw new IllegalArgumentException("Tournoi non planifiable");
-        planifies.add(t);
+
+    public synchronized void ajouter(Jeu jeu) {
+        verifierOuverture();
+        if (jeux.containsKey(jeu.nom())) {
+            throw new IllegalArgumentException("Ce jeu est déjà enregistré");
+        }
+        jeux.put(jeu.nom(), jeu);
     }
-    public synchronized Optional<Equipe> equipe(String nom) { return Optional.ofNullable(equipes.get(nom)); }
-    public synchronized List<Tournoi> planifies() { return planifies.stream().sorted().toList(); }
+
+    public synchronized void ajouter(Equipe equipe) {
+        verifierOuverture();
+        if (equipes.containsKey(equipe.nom())) {
+            throw new IllegalArgumentException("Ce nom d'équipe est déjà enregistré");
+        }
+        equipes.put(equipe.nom(), equipe);
+    }
+
+    public synchronized void planifier(Tournoi tournoi) {
+        verifierOuverture();
+        if (tournoi.etat() != EtatTournoi.PLANIFIE || tournois.containsKey(tournoi.nom())) {
+            throw new IllegalArgumentException("Ce tournoi ne peut pas être planifié");
+        }
+        tournois.put(tournoi.nom(), tournoi);
+        planifies.add(tournoi);
+    }
+
+    public synchronized Optional<Equipe> equipe(String nom) {
+        return Optional.ofNullable(equipes.get(nom));
+    }
+
+    public synchronized List<Tournoi> planifies() {
+        List<Tournoi> resultat = new ArrayList<>(planifies);
+        resultat.sort(null); // Utiliser l'ordre défini par Tournoi.compareTo.
+        return List.copyOf(resultat);
+    }
+
     public synchronized List<Tournoi> termines() {
-        return tournois.values().stream().filter(t -> t.etat() == EtatTournoi.TERMINE)
-            .sorted(Comparator.comparing(Tournoi::budget).reversed().thenComparing(Tournoi::nom)).toList();
+        List<Tournoi> resultat = new ArrayList<>();
+        for (Tournoi tournoi : tournois.values()) {
+            if (tournoi.etat() == EtatTournoi.TERMINE) {
+                resultat.add(tournoi);
+            }
+        }
+        resultat.sort(new Comparator<Tournoi>() {
+            @Override
+            public int compare(Tournoi premier, Tournoi second) {
+                int ordre = second.budget().compareTo(premier.budget());
+                if (ordre == 0) {
+                    ordre = premier.nom().compareTo(second.nom());
+                }
+                return ordre;
+            }
+        });
+        return List.copyOf(resultat);
     }
+
     public synchronized List<Equipe> classement() {
-        // Capturer les points une seule fois évite un comparateur instable pendant une simulation.
-        Map<Equipe, Integer> instantane = new HashMap<>(); equipes.values().forEach(e -> instantane.put(e, e.points()));
-        return equipes.values().stream().sorted(Comparator.<Equipe>comparingInt(instantane::get).reversed().thenComparing(Equipe::nom)).toList();
+        // Figer les scores avant le tri : ils peuvent évoluer pendant la simulation.
+        Map<Equipe, Integer> scores = new HashMap<>();
+        for (Equipe equipe : equipes.values()) {
+            scores.put(equipe, equipe.points());
+        }
+        List<Equipe> resultat = new ArrayList<>(equipes.values());
+        resultat.sort(new Comparator<Equipe>() {
+            @Override
+            public int compare(Equipe premiere, Equipe seconde) {
+                int ordre = Integer.compare(scores.get(seconde), scores.get(premiere));
+                if (ordre == 0) {
+                    ordre = premiere.nom().compareTo(seconde.nom());
+                }
+                return ordre;
+            }
+        });
+        return List.copyOf(resultat);
     }
+
     public synchronized List<Arbitre> arbitres(boolean disponibles) {
-        return personnes.values().stream().filter(Arbitre.class::isInstance).map(Arbitre.class::cast)
-            .filter(a -> a.disponible() == disponibles).toList();
+        List<Arbitre> resultat = new ArrayList<>();
+        for (Personne personne : personnes.values()) {
+            if (personne instanceof Arbitre) {
+                Arbitre arbitre = (Arbitre) personne;
+                if (arbitre.disponible() == disponibles) {
+                    resultat.add(arbitre);
+                }
+            }
+        }
+        return List.copyOf(resultat);
     }
+
     public synchronized List<Match> matchs(Equipe equipe) {
-        return tournois.values().stream().sorted().flatMap(t -> t.matchs().stream()).filter(m -> m.concerne(equipe)).toList();
+        List<Tournoi> listeTournois = new ArrayList<>(tournois.values());
+        listeTournois.sort(null);
+        List<Match> resultat = new ArrayList<>();
+        for (Tournoi tournoi : listeTournois) {
+            for (Match match : tournoi.matchs()) {
+                if (match.concerne(equipe)) {
+                    resultat.add(match);
+                }
+            }
+        }
+        return List.copyOf(resultat);
     }
-    public synchronized int nombreEnCours() { return enCours.size(); }
-    public void observer(EcouteurMatch observateur) { observateurs.add(Objects.requireNonNull(observateur)); }
-    public List<RuntimeException> erreursObservateurs() { return List.copyOf(erreursObservateurs); }
+
+    public synchronized int nombreEnCours() {
+        return enCours.size();
+    }
+
+    public synchronized void observer(EcouteurMatch observateur) {
+        observateurs.add(Objects.requireNonNull(observateur));
+    }
+
+    public List<RuntimeException> erreursObservateurs() {
+        return List.copyOf(erreursObservateurs);
+    }
+
+    private List<Arbitre> chercherArbitresQualifies(Jeu jeu) {
+        List<Arbitre> resultat = new ArrayList<>();
+        for (Personne personne : personnes.values()) {
+            if (personne instanceof Arbitre) {
+                Arbitre arbitre = (Arbitre) personne;
+                if (arbitre.estQualifie(jeu)) {
+                    resultat.add(arbitre);
+                }
+            }
+        }
+        return resultat;
+    }
+
     public synchronized Tournoi lancerSuivant(ParametresSimulation parametres, long graine) {
-        ouverte(); Objects.requireNonNull(parametres);
-        if (enCours.size() >= 3) throw new IllegalStateException("Trois tournois déjà en cours");
+        verifierOuverture();
+        Objects.requireNonNull(parametres);
+        if (enCours.size() >= 3) {
+            throw new IllegalStateException("Trois tournois sont déjà en cours");
+        }
         Tournoi tournoi = planifies.peek();
-        if (tournoi == null) throw new IllegalStateException("Aucun tournoi planifié");
-        List<Arbitre> qualifies = personnes.values().stream().filter(Arbitre.class::isInstance)
-            .map(Arbitre.class::cast).filter(a -> a.estQualifie(tournoi.jeu())).toList();
-        // Valider le calcul avant toute réservation.
-        int n = tournoi.equipes().size(); parametres.dureeNanos(Math.multiplyExact(n, n - 1) / 2, tournoi.arenes());
+        if (tournoi == null) {
+            throw new IllegalStateException("Aucun tournoi n'est planifié");
+        }
+        List<Arbitre> qualifies = chercherArbitresQualifies(tournoi.jeu());
+        int nombreEquipes = tournoi.equipes().size();
+        int nombreMatchs = Math.multiplyExact(nombreEquipes, nombreEquipes - 1) / 2;
+        parametres.dureeNanos(nombreMatchs, tournoi.arenes());
+
         tournoi.demarrer(qualifies);
-        planifies.remove(); enCours.add(tournoi); qualifies.forEach(Arbitre::engager);
+        planifies.remove();
+        enCours.add(tournoi);
+        for (Arbitre arbitre : qualifies) {
+            arbitre.engager();
+        }
         List<EcouteurMatch> abonnes = List.copyOf(observateurs);
+        // Cette petite lambda confie le travail au pool et laisse l'appelant continuer.
         executeur.execute(() -> simuler(tournoi, qualifies, parametres, graine, abonnes));
         return tournoi;
     }
-    private void simuler(Tournoi tournoi, List<Arbitre> arbitres, ParametresSimulation parametres, long graine, List<EcouteurMatch> abonnes) {
-        Throwable echec = null;
-        try { Simulateur.executer(tournoi, parametres, new Random(graine), abonnes, erreursObservateurs::add); }
-        catch (InterruptedException e) { Thread.currentThread().interrupt(); echec = e; }
-        catch (RuntimeException e) { echec = e; }
-        // Même en cas d'interruption/stratégie défaillante, annuler les rencontres restantes et libérer les effectifs.
-        Rapport rapport;
+
+    private void simuler(Tournoi tournoi, List<Arbitre> arbitres,
+                         ParametresSimulation parametres, long graine,
+                         List<EcouteurMatch> abonnes) {
+        Throwable erreurRencontree = null;
+        Random random = new Random(graine);
         try {
-            for (Match m : tournoi.matchs()) if (m.etat() == EtatMatch.PREVU)
-                tournoi.terminerMatch(m, true, parametres.strategie(), new Random(0));
+            Simulateur.executer(tournoi, parametres, random, abonnes, erreursObservateurs);
+        } catch (InterruptedException erreur) {
+            Thread.currentThread().interrupt();
+            erreurRencontree = erreur;
+        } catch (RuntimeException erreur) {
+            erreurRencontree = erreur;
+        }
+
+        Rapport rapport = null;
+        try {
+            // Une interruption ne doit pas laisser des rencontres ou des équipes bloquées.
+            for (Match match : tournoi.matchs()) {
+                if (match.etat() == EtatMatch.PREVU) {
+                    tournoi.terminerMatch(match, true, parametres.strategie(), random);
+                }
+            }
             rapport = tournoi.cloturer();
             depot.sauvegarder(rapport);
-        } catch (RuntimeException e) {
-            if (echec != null) e.addSuppressed(echec);
-            echec = e; rapport = null;
+        } catch (RuntimeException erreur) {
+            if (erreurRencontree != null) {
+                erreur.addSuppressed(erreurRencontree);
+            }
+            erreurRencontree = erreur;
         } finally {
-            synchronized (this) { arbitres.forEach(Arbitre::liberer); enCours.remove(tournoi); }
+            libererEngagements(tournoi, arbitres);
         }
-        if (echec == null) tournoi.publier(rapport); else tournoi.echec(echec);
+        if (erreurRencontree == null) {
+            tournoi.publier(rapport);
+        } else {
+            tournoi.echec(erreurRencontree);
+        }
     }
-    @Override public void close() {
-        synchronized (this) { if (ferme) return; ferme = true; executeur.shutdown(); }
+
+    private synchronized void libererEngagements(Tournoi tournoi, List<Arbitre> arbitres) {
+        for (Arbitre arbitre : arbitres) {
+            arbitre.liberer();
+        }
+        enCours.remove(tournoi);
+    }
+
+    @Override
+    public void close() {
+        synchronized (this) {
+            if (ferme) {
+                return;
+            }
+            ferme = true;
+            executeur.shutdown();
+        }
+        // Ne pas garder le verrou d'Arena pendant l'attente des workers.
         boolean interrompu = false;
         try {
             if (!executeur.awaitTermination(30, TimeUnit.SECONDS)) {
                 executeur.shutdownNow();
-                if (!executeur.awaitTermination(10, TimeUnit.SECONDS)) throw new IllegalStateException("Simulation non coopérative");
+                if (!executeur.awaitTermination(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Une tâche refuse de s'arrêter");
+                }
             }
-        } catch (InterruptedException e) {
-            interrompu = true; executeur.shutdownNow();
-            // Attendre réellement les workers avant que le propriétaire ferme le dépôt.
+        } catch (InterruptedException erreur) {
+            interrompu = true;
+            executeur.shutdownNow();
             while (!executeur.isTerminated()) {
-                try { if (!executeur.awaitTermination(10, TimeUnit.SECONDS)) throw new IllegalStateException("Arrêt impossible", e); }
-                catch (InterruptedException ignore) { interrompu = true; }
+                try {
+                    if (!executeur.awaitTermination(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Arrêt impossible", erreur);
+                    }
+                } catch (InterruptedException nouvelleInterruption) {
+                    interrompu = true;
+                }
             }
-        } finally { if (interrompu) Thread.currentThread().interrupt(); }
+        } finally {
+            if (interrompu) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 }

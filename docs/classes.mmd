@@ -86,18 +86,22 @@ classDiagram
   +matchTermine(Match)
  }
  class Simulateur {
-  +executer(Tournoi,ParametresSimulation,Random,List,Consumer)$
+  ~executer(Tournoi,ParametresSimulation,Random,List,Queue)$
  }
  class ParametresSimulation {
-  <<record>>
-  +Duration tempsParMatch
-  +double probabiliteIncident
+  -Duration tempsParMatch
+  -double probabiliteIncident
+  +tempsParMatch() Duration
+  +probabiliteIncident() double
  }
  class VueTournoi {
-  <<record immuable>>
-  +EtatTournoi etat
-  +Map points
-  +List matchs
+  <<classe immuable>>
+  -EtatTournoi etat
+  -Map points
+  -List matchs
+  +etat() EtatTournoi
+  +points() Map
+  +matchs() List
  }
  class Rapport {
   <<Entity JPA>>
@@ -147,3 +151,23 @@ classDiagram
  Strategies ..> StrategieVainqueur : fournit
  DepotRapports <|.. DepotJpa
  DepotJpa --> Rapport : persiste uniquement
+
+ class StrategieEquitable
+ class StrategiePonderee
+ class StrategieMeilleure
+ class CompteurMatchs {
+  -int nombre
+  +matchTermine(Match)
+  +nombre() int
+ }
+ class ResultatMatch {
+  -String premiere
+  -String seconde
+  -EtatMatch etat
+  -String vainqueur
+ }
+ StrategieVainqueur <|.. StrategieEquitable
+ StrategieVainqueur <|.. StrategiePonderee
+ StrategieVainqueur <|.. StrategieMeilleure
+ EcouteurMatch <|.. CompteurMatchs
+ VueTournoi *-- ResultatMatch

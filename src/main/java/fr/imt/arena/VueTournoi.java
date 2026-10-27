@@ -3,8 +3,27 @@ package fr.imt.arena;
 import java.util.List;
 import java.util.Map;
 
-/** Photographie cohérente, indépendante des mutations ultérieures de la simulation. */
-public record VueTournoi(EtatTournoi etat, Map<String, Integer> points, List<ResultatMatch> matchs) {
-    public VueTournoi { points = Map.copyOf(points); matchs = List.copyOf(matchs); }
-    public record ResultatMatch(String premiere, String seconde, EtatMatch etat, String vainqueur) { }
+/** Une photographie du tournoi qui ne change plus après sa création. */
+public final class VueTournoi {
+    private final EtatTournoi etat;
+    private final Map<String, Integer> points;
+    private final List<ResultatMatch> matchs;
+
+    public VueTournoi(EtatTournoi etat, Map<String, Integer> points, List<ResultatMatch> matchs) {
+        this.etat = etat;
+        this.points = Map.copyOf(points);
+        this.matchs = List.copyOf(matchs);
+    }
+
+    public EtatTournoi etat() {
+        return etat;
+    }
+
+    public Map<String, Integer> points() {
+        return points;
+    }
+
+    public List<ResultatMatch> matchs() {
+        return matchs;
+    }
 }
