@@ -1,0 +1,33 @@
+Vérification du 29 octobre 2026
+
+Base : IMT_Arena_Simple.zip fourni par l'utilisateur.
+Compilation ciblée Java 17 ; exécution avec JDK 21.0.9+10 et Maven 3.9.11.
+
+Projet original : 17 tests, 0 échec, 0 erreur, 0 ignoré.
+Version réorganisée : clean verify réussi, 17 tests, 0 échec, 0 erreur, 0 ignoré.
+Les assertions existantes sont conservées ; packages, imports et présentation adaptés.
+
+Démonstration exécutée avec succès :
+- Coupe IMT : 5/6 matchs, Alpha vainqueur, réussite.
+- Revanche : 4/6 matchs, Alpha vainqueur, seuil de réussite non atteint.
+- Alpha : 15 points ; Delta : 9 ; Bravo : 3 ; Charlie : 0.
+- 9 matchs arbitrés et 3 joueurs Alpha professionnels.
+- Deux nouveaux rapports enregistrés dans H2.
+La fermeture/réouverture de la base est également testée par ArenaTest.
+
+Arborescence : application, metier, jeux, strategies, persistance, util.
+23 fichiers Java de production et un fichier de tests.
+Les packages correspondent aux dossiers.
+Maven pointe vers application.Main ; JPA vers persistance.RapportTournoi.
+55 commentaires Java vérifiés : entre 1 et 5 mots chacun.
+Le dossier PDF régénéré tient sur 2 pages et a été inspecté visuellement.
+
+Le verrou commun et la sauvegarde finale sous verrou sont conservés du ZIP.
+Ils privilégient une cohérence facile à expliquer, avec un débit limité.
+La fermeture suppose des stratégies coopératives avec l'interruption.
+Aucun test ne prouve mathématiquement l'absence de toute course.
+
+Contrôle du ZIP : extraction dans un dossier neuf, puis clean verify hors ligne.
+Résultat : 17 tests, 0 échec, 0 erreur, 0 ignoré ; BUILD SUCCESS.
+Les sources livrées sont identiques à celles compilées après extraction.
+La présente note est le seul ajout après cette vérification.

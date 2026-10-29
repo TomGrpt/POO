@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dépendances cloud, hors du checkout ; téléchargements TLS et empreintes officielles.
+# Dépendances cloud
 set -euo pipefail
 mkdir -p /workspace/tools /workspace/.m2/repository
 if [ ! -x /workspace/tools/apache-maven-3.9.11/bin/mvn ]; then
@@ -31,7 +31,7 @@ for scheme in ('http', 'https'):
         for key, value in {'id': scheme, 'active': 'true', 'protocol': scheme, 'host': url.hostname,
                            'port': str(url.port or 80), 'nonProxyHosts': 'localhost|127.0.0.1'}.items():
             E.SubElement(proxy, key).text = value
-# Aucune valeur de credential n'est copiée.
+# Aucun secret copié
 E.ElementTree(settings).write('/workspace/tools/maven-settings.xml')
 PY
 cd /workspace/POO
