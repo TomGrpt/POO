@@ -1,10 +1,10 @@
-# IMT Arena — version réorganisée
+# IMT Arena — trois modes d’exécution
 
 Ce projet reprend le code fourni dans `IMT_Arena_Simple.zip`. Il simule des tournois e-sport, calcule les résultats et conserve les rapports dans une base H2.
 
 Le code utilise des classes ordinaires, des boucles et des conditions avec accolades. Les commentaires Java contiennent **1 à 5 mots**.
 
-[Télécharger le ZIP réorganisé](https://github.com/TomGrpt/POO/raw/refs/heads/main/livraison/IMT_Arena_Simple_Reorganise.zip)
+[Télécharger le projet avec les trois Main](https://github.com/TomGrpt/POO/raw/refs/heads/main/livraison/IMT_Arena_3_Main.zip)
 
 ## Lancer le projet
 
@@ -19,6 +19,57 @@ Le premier lancement télécharge les dépendances. Le JAR ne contient pas toute
 
 Dans le cloud préparé, remplacer `mvn` par `./mvn-cloud`. Ce lanceur utilise les outils installés dans `/workspace/tools` ; il est spécifique au cloud. Sur un ordinateur personnel, les commandes Maven standard suffisent.
 
+## Trois Main séparés
+
+Chaque fichier possède son propre `public static void main` et prépare ses participants indépendants :
+
+- [MainSequentiel.java](src/main/java/fr/imt/arena/application/MainSequentiel.java) : un tournoi après l’autre.
+- [MainMultithread.java](src/main/java/fr/imt/arena/application/MainMultithread.java) : un thread dédié par tournoi.
+- [MainPool.java](src/main/java/fr/imt/arena/application/MainPool.java) : un pool de trois threads.
+
+Lancer le fichier voulu dans l’IDE ou utiliser une des commandes suivantes :
+
+```sh
+mvn compile exec:java -Dexec.mainClass=fr.imt.arena.application.MainSequentiel
+mvn compile exec:java -Dexec.mainClass=fr.imt.arena.application.MainMultithread
+mvn compile exec:java -Dexec.mainClass=fr.imt.arena.application.MainPool
+```
+
+Le gestionnaire et `ModeExecution` sont inclus. Le fichier `Main.java` conserve aussi le comparateur des trois modes.
+
+## Choisir le mode du Main
+
+Sans argument, Main compare les trois modes successivement. Chaque mode démarre avec trois tournois et des données neuves. Chaque tournoi possède quatre équipes et un arbitre propres ; les ressources ne sont pas partagées entre tournois.
+
+```sh
+mvn compile exec:java -Dexec.args="tous"
+mvn compile exec:java -Dexec.args="sequentiel"
+mvn compile exec:java -Dexec.args="threads"
+mvn compile exec:java -Dexec.args="pool"
+```
+
+| Mode | Exécution réelle | Attente |
+|---|---|---|
+| `sequentiel` | `FutureTask.run()` dans le thread appelant, sans worker de simulation. | Chaque tournoi finit avant de lancer le suivant. |
+| `threads` | `new Thread(travail, nom).start()` crée un thread par tournoi. | Les trois lancements précèdent l'attente des rapports. |
+| `pool` | `Executors.newFixedThreadPool(3)` reçoit les tâches avec `execute`. | Les trois lancements précèdent l'attente des rapports. |
+
+Le code des trois exemples est dans `Main.lancerSequentiel`, `Main.lancerAvecThreads` et `Main.lancerAvecPool`. Le choix réel d'exécution est dans `GestionnaireTournois.lancerSuivant`. Le même calcul de tournoi est utilisé dans les trois cas : ajouter des threads autour d'un lancement qui utiliserait toujours le pool ne permettrait pas cette comparaison.
+
+[ModeExecution](src/main/java/fr/imt/arena/metier/ModeExecution.java) est une petite énumération : `SEQUENTIEL`, `THREADS`, `POOL`. Les appels utilisent ce paramètre :
+
+```java
+gestion.lancerSuivant(42, new TirageEquitable(), ModeExecution.SEQUENTIEL);
+gestion.lancerSuivant(42, new TirageEquitable(), ModeExecution.THREADS);
+gestion.lancerSuivant(42, new TirageEquitable(), ModeExecution.POOL);
+```
+
+Ces lignes sont trois alternatives, pas trois appels à recopier sur un gestionnaire contenant un seul tournoi. L'ancienne méthode à deux paramètres conserve le mode pool par défaut.
+
+Le Main affiche une durée observée par mode, sauvegarde comprise. Avec six matchs de 100 ms et une arène par tournoi, la cible de simulation est 600 ms par tournoi : environ 1 800 ms en séquentiel et 600 ms en parallèle, auxquels s'ajoutent les coûts CPU/JPA. La sauvegarde reste sous le verrou commun et se fait une à la fois ; les durées mesurées ne sont pas une promesse de gain fixe.
+
+Les mêmes graines (42, 43, 44) et les mêmes équipes neuves permettent de comparer les résultats. Le mode `tous` ajoute neuf rapports dans la base ; un mode seul en ajoute trois. Les threads dédiés sont joints, le pool est fermé et toutes les tâches sont attendues avant de fermer le dépôt.
+
 ## Nouvelle arborescence
 
 ```text
@@ -26,7 +77,10 @@ src/
 ├── main/
 │   ├── java/fr/imt/arena/
 │   │   ├── application/
-│   │   │   └── Main.java
+│   │   │   ├── Main.java
+│   │   │   ├── MainSequentiel.java
+│   │   │   ├── MainMultithread.java
+│   │   │   └── MainPool.java
 │   │   ├── metier/
 │   │   │   ├── Personne.java
 │   │   │   ├── Joueur.java
@@ -36,6 +90,7 @@ src/
 │   │   │   ├── Match.java
 │   │   │   ├── Tournoi.java
 │   │   │   ├── GestionnaireTournois.java
+│   │   │   ├── ModeExecution.java
 │   │   │   ├── Classable.java
 │   │   │   ├── EtatTournoi.java
 │   │   │   ├── Genre.java
@@ -97,7 +152,7 @@ Personne contient les données communes. Joueur, Coach et Arbitre en héritent. 
 2. Il inscrit les équipes au tournoi, puis le planifie.
 3. `lancerSuivant` prend le tournoi le plus proche par date, puis par nom.
 4. Le gestionnaire vérifie les équipes et réserve un arbitre disponible et qualifié.
-5. Une tâche exécute la simulation dans le pool ; le Main peut continuer.
+5. La tâche est exécutée directement, dans un thread dédié ou dans le pool selon le mode. Le Main peut continuer dans les deux modes parallèles.
 6. Deux boucles créent chaque paire d'équipes une seule fois.
 7. Les résultats sont tirés au rythme prévu ; un incident annule la rencontre.
 8. À la fin, le gestionnaire applique les points et les statistiques, crée le rapport et le sauvegarde.
@@ -125,7 +180,7 @@ tournoi.attendreRapport(10, TimeUnit.SECONDS);
 
 Les `ArrayList` conservent des listes, les `HashMap` retrouvent les objets par identifiant ou nom, le `HashSet` évite les qualifications en double. La `PriorityQueue` choisit le prochain tournoi. Les classements sont des copies de listes triées avec un comparateur explicite. La `LinkedHashMap` regroupe les matchs par gagnant en gardant leur ordre de première apparition.
 
-[Verrou](src/main/java/fr/imt/arena/metier/Verrou.java) contient le verrou commun. Les blocs `synchronized` protègent ensemble les transferts, les réservations et la publication finale. Le pool contient trois threads ; le compteur `enCours` empêche également d'accepter un quatrième tournoi actif.
+[Verrou](src/main/java/fr/imt/arena/metier/Verrou.java) contient le verrou commun. Les blocs `synchronized` protègent ensemble les transferts, les réservations et la publication finale. Le pool contient trois threads ; les threads dédiés ne passent pas par ce pool. Le compteur `enCours` empêche un quatrième tournoi actif, tous modes confondus.
 
 Les pauses, le choix du vainqueur et l'attente du rapport se font hors verrou. La sauvegarde finale reste sous le verrou commun, comme dans le code fourni : cela facilite une publication cohérente, mais peut retarder temporairement les consultations et les autres clôtures. Ce choix convient à cette petite simulation.
 
@@ -152,12 +207,12 @@ Relancer Main ajoute des rapports. Ne pas lancer plusieurs JVM simultanément su
 - Le tournoi réussit si `10 × joués >= 7 × prévus`.
 - Si le prochain tournoi est invalide ou occupé, le lancement échoue sans passer silencieusement au suivant.
 - Utiliser un seul gestionnaire pour l'application. Les stratégies personnalisées doivent terminer et respecter l'interruption.
-- `close()` attend la fin des tâches. Si l'appelant est interrompu, il interrompt les simulations et attend leur terminaison. Une stratégie qui ignore indéfiniment l'interruption peut bloquer cette fermeture.
+- `close()` attend les tâches, joint les threads dédiés et attend la fermeture du pool. Une interruption de l’appelant demande l’arrêt des threads possédés par le gestionnaire. Une stratégie qui ignore indéfiniment l’interruption peut bloquer cette fermeture. Une simulation séquentielle reste exécutée par son appelant.
 - Une erreur de stratégie ou de sauvegarde est transmise par `ExecutionException`. Les réservations sont libérées ; le rapport reste consultable en mémoire.
 
 ## Vérifications et livraison
 
-Les **17 tests existants** ont été conservés et rejoués après réorganisation. Ils couvrent notamment les transferts, les promotions, les points, les qualifications, les conditions de lancement, la limite de trois, les incidents et la persistance fichier. Voir [VERIFICATION.txt](VERIFICATION.txt) pour les résultats réellement obtenus.
+Les **17 tests existants** ont été conservés. Sept exécutions supplémentaires vérifient les modes : **24 tests passent** au total. Ils couvrent les règles initiales, le thread réellement utilisé, l’accès aux consultations hors verrou, trois tournois effectivement parallèles et la libération après une fermeture interrompue. Voir [VERIFICATION.txt](VERIFICATION.txt) pour les résultats réellement obtenus.
 
 Le ZIP contient les sources, les tests, les ressources Maven/JPA et les documents à jour. Il exclut les dépendances, `.git`, les résultats de compilation et les bases remplies.
 

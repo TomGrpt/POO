@@ -9,12 +9,14 @@ import fr.imt.arena.strategies.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 // Vérifications du projet
 class ArenaTest {
@@ -332,5 +334,137 @@ class ArenaTest {
         assertEquals(0, gestion.getNombreEnCours());
         assertThrows(
                 IllegalStateException.class, () -> gestion.lancerSuivant(2, new TirageEquitable()));
+    }
+
+    @ParameterizedTest
+    @EnumSource(ModeExecution.class)
+    void executionReelleSelonLeMode(ModeExecution mode) throws Exception {
+        Tournoi tournoi = tournoi("Mode", 4, 0);
+        arbitre();
+        Thread appelant = Thread.currentThread();
+        AtomicReference<Thread> executant = new AtomicReference<>();
+        ExecutorService lecteur = Executors.newSingleThreadExecutor();
+        try {
+            StrategieVictoire strategie =
+                    (a, b, hasard) -> {
+                        executant.set(Thread.currentThread());
+                        try {
+                            assertEquals(
+                                    1,
+                                    lecteur.submit(() -> gestion.getNombreEnCours())
+                                            .get(2, TimeUnit.SECONDS));
+                        } catch (Exception erreur) {
+                            throw new IllegalStateException(erreur);
+                        }
+                        return a;
+                    };
+            gestion.lancerSuivant(42, strategie, mode);
+            if (mode == ModeExecution.SEQUENTIEL) {
+                assertEquals(EtatTournoi.TERMINE, tournoi.getEtat());
+            }
+            RapportTournoi rapport = attendre(tournoi);
+            assertEquals(6, rapport.getMatchsJoues());
+            if (mode == ModeExecution.SEQUENTIEL) {
+                assertSame(appelant, executant.get());
+            } else {
+                assertNotSame(appelant, executant.get());
+                if (mode == ModeExecution.THREADS) {
+                    assertEquals("tournoi-Mode", executant.get().getName());
+                } else {
+                    assertTrue(executant.get().getName().startsWith("pool-"));
+                }
+            }
+        } finally {
+            lecteur.shutdownNow();
+            assertTrue(lecteur.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ModeExecution.class,
+            names = {"THREADS", "POOL"})
+    void troisTournoisAvancentEnParallele(ModeExecution mode) throws Exception {
+        List<Tournoi> tournois = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            tournois.add(tournoi("Parallele" + i, 4, i));
+            arbitre();
+        }
+        CountDownLatch demarres = new CountDownLatch(3);
+        CountDownLatch liberer = new CountDownLatch(1);
+        StrategieVictoire strategie =
+                (a, b, hasard) -> {
+                    demarres.countDown();
+                    try {
+                        if (!liberer.await(5, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Test bloqué");
+                        }
+                    } catch (InterruptedException erreur) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(erreur);
+                    }
+                    return a;
+                };
+        try {
+            for (int i = 0; i < 3; i++) {
+                gestion.lancerSuivant(i, strategie, mode);
+            }
+            assertTrue(demarres.await(3, TimeUnit.SECONDS));
+            assertEquals(3, gestion.getNombreEnCours());
+            assertEquals(3, gestion.arbitres(true).size());
+        } finally {
+            liberer.countDown();
+        }
+        for (Tournoi tournoi : tournois) {
+            assertEquals(6, attendre(tournoi).getMatchsJoues());
+        }
+        gestion.close();
+        assertEquals(0, gestion.getNombreEnCours());
+        assertEquals(3, depot.tous().size());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ModeExecution.class,
+            names = {"THREADS", "POOL"})
+    void fermetureInterrompueLibereLesTournois(ModeExecution mode) throws Exception {
+        Tournoi tournoi = tournoi("Interruption", 4, 0);
+        Arbitre arbitre = arbitre();
+        CountDownLatch entre = new CountDownLatch(1);
+        CountDownLatch fin = new CountDownLatch(1);
+        gestion.lancerSuivant(
+                1,
+                (a, b, hasard) -> {
+                    entre.countDown();
+                    try {
+                        if (!fin.await(5, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Test bloqué");
+                        }
+                    } catch (InterruptedException erreur) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(erreur);
+                    }
+                    return a;
+                },
+                mode);
+        try {
+            assertTrue(entre.await(3, TimeUnit.SECONDS));
+            Thread.currentThread().interrupt();
+            try {
+                gestion.close();
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally {
+                Thread.interrupted();
+            }
+            assertEquals(EtatTournoi.TERMINE, tournoi.getEtat());
+            assertEquals(0, gestion.getNombreEnCours());
+            assertFalse(arbitre.estOccupe());
+            assertThrows(ExecutionException.class, () -> attendre(tournoi));
+            for (Equipe equipe : tournoi.getEquipes()) {
+                assertFalse(equipe.estOccupee());
+            }
+        } finally {
+            fin.countDown();
+        }
     }
 }

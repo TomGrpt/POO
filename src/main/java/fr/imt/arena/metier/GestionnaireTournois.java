@@ -17,6 +17,8 @@ public final class GestionnaireTournois implements AutoCloseable {
     private final PriorityQueue<Tournoi> planifies = new PriorityQueue<>();
     private final List<Tournoi> tournois = new ArrayList<>();
     private final ExecutorService pool = Executors.newFixedThreadPool(3);
+    private final List<Thread> threads = new ArrayList<>();
+    private final List<FutureTask<RapportTournoi>> travaux = new ArrayList<>();
     private final DepotRapports depot;
     private final long tempsMatch;
     private final double risqueIncident;
@@ -188,15 +190,23 @@ public final class GestionnaireTournois implements AutoCloseable {
         }
     }
 
-    // Vérification et réservation
+    // Pool par défaut
     public Tournoi lancerSuivant(long graine, StrategieVictoire strategie) {
+        return lancerSuivant(graine, strategie, ModeExecution.POOL);
+    }
+
+    // Vérification et réservation
+    public Tournoi lancerSuivant(long graine, StrategieVictoire strategie, ModeExecution mode) {
+        Objects.requireNonNull(mode);
+        Tournoi tournoi;
+        FutureTask<RapportTournoi> travail;
         synchronized (Verrou.OBJET) {
             verifierOuvert();
             Objects.requireNonNull(strategie);
             if (enCours >= 3) {
                 throw new IllegalStateException("Déjà trois tournois en cours");
             }
-            Tournoi tournoi = planifies.peek();
+            tournoi = planifies.peek();
             if (tournoi == null) {
                 throw new IllegalStateException("Aucun tournoi planifié");
             }
@@ -233,8 +243,7 @@ public final class GestionnaireTournois implements AutoCloseable {
             }
             Arbitre arbitre = choisi;
             // Tâche exécutée séparément
-            FutureTask<RapportTournoi> travail =
-                    new FutureTask<>(() -> simuler(tournoi, arbitre, graine, strategie));
+            travail = new FutureTask<>(() -> simuler(tournoi, arbitre, graine, strategie));
 
             for (Equipe equipe : tournoi.getEquipes()) {
                 equipe.reserver(true);
@@ -243,9 +252,22 @@ public final class GestionnaireTournois implements AutoCloseable {
             enCours++;
             planifies.remove();
             tournoi.commencer(travail);
-            pool.execute(travail);
-            return tournoi;
+            travaux.add(travail);
+            if (mode == ModeExecution.THREADS) {
+                // Thread dédié au tournoi
+                Thread thread = new Thread(travail, "tournoi-" + tournoi.getNom());
+                threads.add(thread);
+                thread.start();
+            } else if (mode == ModeExecution.POOL) {
+                // Réutilisation des threads
+                pool.execute(travail);
+            }
         }
+        if (mode == ModeExecution.SEQUENTIEL) {
+            // Exécution dans l’appelant
+            travail.run();
+        }
+        return tournoi;
     }
 
     // Simulation des rencontres
@@ -357,24 +379,68 @@ public final class GestionnaireTournois implements AutoCloseable {
     }
 
     @Override
-    // Arrêt des threads
+    // Arrêt des exécutions
     public void close() {
+        List<Thread> threadsAJoindre;
+        List<FutureTask<RapportTournoi>> travauxAAttendre;
         synchronized (Verrou.OBJET) {
             ferme = true;
             pool.shutdown();
+            threadsAJoindre = new ArrayList<>(threads);
+            travauxAAttendre = new ArrayList<>(travaux);
         }
         boolean interrompu = false;
-
+        // Attente hors verrou
+        for (FutureTask<RapportTournoi> travail : travauxAAttendre) {
+            boolean termine = false;
+            while (!termine) {
+                try {
+                    travail.get();
+                    termine = true;
+                } catch (ExecutionException erreur) {
+                    // Erreur transmise au rapport
+                    termine = true;
+                } catch (InterruptedException erreur) {
+                    interrompu = true;
+                    interrompreThreads(threadsAJoindre);
+                }
+            }
+        }
+        for (Thread thread : threadsAJoindre) {
+            while (thread.isAlive()) {
+                try {
+                    thread.join();
+                } catch (InterruptedException erreur) {
+                    interrompu = true;
+                    interrompreThreads(threadsAJoindre);
+                }
+            }
+        }
         while (!pool.isTerminated()) {
             try {
                 pool.awaitTermination(1, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
+            } catch (InterruptedException erreur) {
                 interrompu = true;
-                pool.shutdownNow();
+                interrompreThreads(threadsAJoindre);
             }
         }
         if (interrompu) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    // Demande d’interruption
+    private void interrompreThreads(List<Thread> threadsAJoindre) {
+        for (Thread thread : threadsAJoindre) {
+            thread.interrupt();
+        }
+        // Annulation des tâches restantes
+        List<Runnable> enAttente = pool.shutdownNow();
+        for (Runnable travail : enAttente) {
+            // Clôture des tâches non démarrées
+            Thread.currentThread().interrupt();
+            travail.run();
+            Thread.interrupted();
         }
     }
 }

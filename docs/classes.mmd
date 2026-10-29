@@ -51,7 +51,16 @@ classDiagram
             -int enCours
             +planifier(Tournoi)
             +lancerSuivant(long,StrategieVictoire) Tournoi
+            +lancerSuivant(long,StrategieVictoire,ModeExecution) Tournoi
+            -List~Thread~ threads
+            -List~FutureTask~ travaux
             +close()
+        }
+        class ModeExecution {
+            <<enumeration>>
+            SEQUENTIEL
+            THREADS
+            POOL
         }
         class Classable {
             <<interface>>
@@ -153,3 +162,6 @@ classDiagram
     Jeu ..> Textes
     Equipe ..> Textes
     Tournoi ..> Textes
+
+    GestionnaireTournois --> ModeExecution
+    Main ..> ModeExecution

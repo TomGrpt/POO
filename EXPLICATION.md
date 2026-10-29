@@ -38,9 +38,9 @@ Avant de lancer, le gestionnaire vérifie quatre équipes au minimum, leur enreg
 
 ## 6. Exécuter sans bloquer Main
 
-Le pool contient trois threads de travail. FutureTask représente une tâche et sa valeur future. Le compteur `enCours` interdit une quatrième admission : le pool seul pourrait accepter une tâche supplémentaire en attente.
+ModeExecution propose trois exécutions. SEQUENTIEL appelle FutureTask.run directement dans le thread appelant. THREADS crée un Thread par tournoi. POOL confie la tâche au pool de trois workers. FutureTask représente le même travail et sa valeur future dans les trois cas. Le compteur enCours interdit une quatrième admission, tous modes confondus.
 
-La lambda `() -> simuler(...)` décrit le travail confié au pool. Le Main peut continuer à consulter l'état. `attendreRapport` attend la valeur future avec un délai maximal, hors verrou.
+La lambda `() -> simuler(...)` décrit le travail. Le Main continue sans attendre dans les modes THREADS et POOL ; en SEQUENTIEL, le lancement ne revient qu’une fois ce travail terminé. `attendreRapport` attend la valeur future avec un délai maximal, hors verrou.
 
 La simulation utilise une graine fixe, attend selon la cadence, tire les incidents et produit les résultats. Les pauses et les stratégies se font hors verrou. Les points sont appliqués à la fin : la stratégie lit donc les points d'avant le tournoi.
 
@@ -70,3 +70,15 @@ Le programme ferme le gestionnaire avant le dépôt : les threads doivent finir 
 - Des commentaires de 1 à 5 mots.
 
 Les assertions des tests existants n'ont pas été supprimées. Les imports et le package des tests suivent la nouvelle arborescence.
+
+## 10. Comparer les modes
+
+Main contient trois petites méthodes distinctes : lancerSequentiel attend chaque tournoi, lancerAvecThreads démarre les trois threads avant d’attendre, lancerAvecPool soumet les trois tâches avant d’attendre. Le gestionnaire exécute réellement la même simulation avec run, Thread.start ou pool.execute. Le mode séquentiel lance run hors verrou afin que les autres consultations restent possibles.
+
+Chaque scénario crée trois groupes indépendants de quatre équipes, trois arbitres et les mêmes graines. Réutiliser les mêmes équipes dans trois tournois simultanés serait interdit par le modèle. Les données sont aussi recréées entre les modes pour que les scores précédents n’influencent pas la comparaison.
+
+Le gestionnaire garde les tâches et les threads dédiés pour les attendre dans close. Le dépôt reste ouvert jusqu’à leur fin. Les commentaires restent limités à cinq mots.
+
+## 11. Trois points d’entrée
+
+MainSequentiel, MainMultithread et MainPool possèdent chacun un main et leur préparation des données. Ils choisissent respectivement SEQUENTIEL, THREADS et POOL. Main reste disponible pour la comparaison en une seule exécution. Les commandes de lancement sont dans le README.

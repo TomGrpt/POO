@@ -1,33 +1,56 @@
-Vérification du 29 octobre 2026
+Vérification locale — 29 octobre 2026
 
-Base : IMT_Arena_Simple.zip fourni par l'utilisateur.
-Compilation ciblée Java 17 ; exécution avec JDK 21.0.9+10 et Maven 3.9.11.
+La version a d’abord été préparée localement ; sa publication GitHub est ensuite demandée par l’utilisateur.
+Compilation ciblée Java 17 ; JDK 21.0.9+10 ; Maven 3.9.11.
 
-Projet original : 17 tests, 0 échec, 0 erreur, 0 ignoré.
-Version réorganisée : clean verify réussi, 17 tests, 0 échec, 0 erreur, 0 ignoré.
-Les assertions existantes sont conservées ; packages, imports et présentation adaptés.
+./mvn-cloud -B clean verify : BUILD SUCCESS.
+24 tests : 0 échec, 0 erreur, 0 ignoré.
+Les 17 cas initiaux restent présents.
+7 exécutions supplémentaires vérifient :
+- Le thread réellement utilisé dans chacun des trois modes.
+- Une consultation depuis un autre thread pendant la stratégie, hors verrou.
+- Trois tournois réellement simultanés avec threads dédiés et pool.
+- La fermeture interrompue et la libération dans les deux modes parallèles.
 
-Démonstration exécutée avec succès :
-- Coupe IMT : 5/6 matchs, Alpha vainqueur, réussite.
-- Revanche : 4/6 matchs, Alpha vainqueur, seuil de réussite non atteint.
-- Alpha : 15 points ; Delta : 9 ; Bravo : 3 ; Charlie : 0.
-- 9 matchs arbitrés et 3 joueurs Alpha professionnels.
-- Deux nouveaux rapports enregistrés dans H2.
-La fermeture/réouverture de la base est également testée par ArenaTest.
+Main exécuté dans quatre dossiers temporaires distincts :
+- tous : 9 rapports, arrêt normal.
+- sequentiel : 3 rapports, arrêt normal.
+- threads : 3 rapports, arrêt normal.
+- pool : 3 rapports, arrêt normal.
+Chaque exécution crée un vrai fichier H2 ; les rapports sont sauvegardés.
+Les résultats de chaque tournoi sont identiques entre les trois modes du scénario tous.
+Les graines, tailles de tournoi et points initiaux sont identiques.
+Les équipes et arbitres sont indépendants entre tournois.
 
-Arborescence : application, metier, jeux, strategies, persistance, util.
-23 fichiers Java de production et un fichier de tests.
-Les packages correspondent aux dossiers.
-Maven pointe vers application.Main ; JPA vers persistance.RapportTournoi.
-55 commentaires Java vérifiés : entre 1 et 5 mots chacun.
-Le dossier PDF régénéré tient sur 2 pages et a été inspecté visuellement.
+Temps observés sur le scénario tous, sauvegarde comprise :
+- Séquentiel : 1871 ms.
+- Threads dédiés : 606 ms.
+- Pool : 611 ms.
+Ces mesures ne constituent pas une garantie de performance.
+Les sauvegardes sont sérialisées sous le verrou commun.
 
-Le verrou commun et la sauvegarde finale sous verrou sont conservés du ZIP.
-Ils privilégient une cohérence facile à expliquer, avec un débit limité.
-La fermeture suppose des stratégies coopératives avec l'interruption.
-Aucun test ne prouve mathématiquement l'absence de toute course.
+27 fichiers Java de production et un fichier de tests.
+78 commentaires Java vérifiés : de 1 à 5 mots.
+Liens du README vérifiés ; configurations Maven et JPA conservées.
+Dossier PDF régénéré : 2 pages ; rendu inspecté.
 
-Contrôle du ZIP : extraction dans un dossier neuf, puis clean verify hors ligne.
-Résultat : 17 tests, 0 échec, 0 erreur, 0 ignoré ; BUILD SUCCESS.
-Les sources livrées sont identiques à celles compilées après extraction.
-La présente note est le seul ajout après cette vérification.
+Le lancement séquentiel utilise FutureTask.run hors verrou, dans l'appelant.
+Les threads dédiés utilisent Thread.start ; le pool utilise execute.
+Le lancement sans argument ModeExecution garde le pool par défaut.
+Le Main sans argument compare les trois modes successivement.
+La limite de trois tournois reste valable, tous modes confondus.
+close attend les tâches, joint les threads dédiés puis attend la fermeture du pool.
+Les stratégies doivent coopérer avec l'interruption et ne pas appeler close depuis un worker.
+Une tâche séquentielle s'exécute dans son appelant ; le gestionnaire ne possède pas ce thread.
+Le délai d'attente du rapport ne constitue pas une annulation.
+
+ZIP extrait dans un dossier neuf : clean verify hors ligne réussi.
+24 tests, 0 échec, 0 erreur, 0 ignoré.
+Seule cette note a été ajoutée ensuite ; les sources restent identiques.
+
+Publication des trois Main séparés :
+MainSequentiel, MainMultithread et MainPool compilent avec le projet.
+Clean verify : 24 tests, 0 échec, 0 erreur, 0 ignoré.
+Chaque Main est exécuté via exec.mainClass dans un dossier neuf :
+3 rapports et arrêt normal pour chacun, avec un vrai fichier H2.
+Le pom permet désormais de choisir la classe avec -Dexec.mainClass.

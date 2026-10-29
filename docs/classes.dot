@@ -3,7 +3,7 @@ digraph Arena {
  node [shape=record, fontname="Open Sans", fontsize=10, style=filled, fillcolor="#edf3fa"];
  edge [fontname="Open Sans", fontsize=8, arrowsize=0.6, color="#53647c"];
  Main [label="application.Main"];
- Gestion [label="{metier.GestionnaireTournois|registres ; file de priorite\npool de trois threads|planifier ; lancerSuivant ; close}"];
+ Gestion [label="{metier.GestionnaireTournois|registres ; file de priorite\nmodes : direct, threads, pool|planifier ; lancerSuivant ; close}"];
  Personne [label="{metier.Personne (abstraite)|id ; nom ; prenom\npseudo ; genre ; telephone}"];
  Joueur [label="{metier.Joueur|equipe ; statut ; victoires locales}"];
  Coach [label="{metier.Coach|equipe ; victoires carriere}"];
